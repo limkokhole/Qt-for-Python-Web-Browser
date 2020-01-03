@@ -19,7 +19,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-from PyQt5 import QtCore
+#from PyQt5 import QtCore
+from PySide2.QtCore import QThread, Signal
 
 xlib_display = None
 
@@ -48,9 +49,11 @@ def get_parent_window_id(window_id):
 
     return xlib_display.create_resource_object("window", window_id).query_tree().parent.__window__()
 
-class ActiveWindowWatcher(QtCore.QThread):
+#class ActiveWindowWatcher(QtCore.QThread):
+class ActiveWindowWatcher(QThread):
 
-    activeWindowChanged = QtCore.pyqtSignal(int)
+    #activeWindowChanged = QtCore.pyqtSignal(int)
+    activeWindowChanged = Signal(int)
 
     def __init__(self):
         super(ActiveWindowWatcher, self).__init__()

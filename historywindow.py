@@ -21,10 +21,14 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import os
-from PyQt5 import QtCore
-from PyQt5.QtNetwork import QNetworkCookieJar, QNetworkCookie
-from PyQt5.QtCore import QCoreApplication, QEvent
-from PyQt5.QtNetwork import QNetworkProxy
+#from PyQt5 import QtCore
+from PySide2 import QtCore
+#from PyQt5.QtNetwork import QNetworkCookieJar, QNetworkCookie
+from PySide2.QtNetwork import QNetworkCookieJar, QNetworkCookie
+#from PyQt5.QtCore import QCoreApplication, QEvent
+from PySide2.QtCore import QCoreApplication, QEvent, Signal
+#from PyQt5.QtNetwork import QNetworkProxy
+from PySide2.QtNetwork import QNetworkProxy
 if os.name == 'posix':
     QCoreApplication.setAttribute(QtCore.Qt.AA_X11InitThreads, True)
 
@@ -34,15 +38,20 @@ from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
 #from PyQt5.QtWebEngineWidgets import QWebView, QWebPage
 #from PyQt5.QtWebKit import QWebSettings
 #from PyQt5.QtWebEngineWidgets import QWebEnginePage
-from PyQt5.QtWidgets import QApplication
-from PyQt5.QtCore import QUrl, Qt
-from PyQt5 import QtGui
+#from PyQt5.QtWidgets import QApplication
+from PySide2.QtWidgets import QApplication
+#from PyQt5.QtCore import QUrl, Qt
+from PySide2.QtCore import QUrl, Qt
+#from PyQt5 import QtGui
+from PySide2 import QtGui
 import time
 import os
 from epc.server import ThreadingEPCServer
 import threading
-from PyQt5.QtWidgets import QWidget
-from PyQt5.QtGui import QPainter, QImage
+#from PyQt5.QtWidgets import QWidget
+from PySide2.QtWidgets import QWidget
+#from PyQt5.QtGui import QPainter, QImage
+from PySide2.QtGui import QPainter, QImage
 import functools
 from utils import get_parent_dir
 from xutils import get_xlib_display, grab_focus, ActiveWindowWatcher, get_parent_window_id
@@ -50,7 +59,8 @@ from send_key import send_string
 
 class postGui(QtCore.QObject):
 
-    throughThread = QtCore.pyqtSignal(object, object)
+    #throughThread = QtCore.pyqtSignal(object, object)
+    throughThread = Signal(object, object)
 
     def __init__(self, inclass=True):
         super(postGui, self).__init__()
@@ -104,8 +114,10 @@ class WebPage(QWebEnginePage):
 #class BrowserBuffer(QWebView):
 class BrowserBuffer(QWebEngineView):
 
-    redrawScreenshot = QtCore.pyqtSignal(object)
-    updateProgress = QtCore.pyqtSignal()
+    #redrawScreenshot = QtCore.pyqtSignal(object)
+    redrawScreenshot = Signal(object)
+    #updateProgress = QtCore.pyqtSignal()
+    updateProgress = Signal()
 
     def __init__(self, buffer_id, buffer_width, buffer_height):
         super(BrowserBuffer, self).__init__()

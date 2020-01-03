@@ -45,7 +45,7 @@ from bookmarkwidget import BookmarkWidget
 from webengineview import WebEngineView
 from historywindow import BrowserView #HistoryWindow
 from PySide2 import QtCore
-from PySide2.QtCore import QPoint, Qt, QUrl
+from PySide2.QtCore import QPoint, Qt, QUrl, Signal
 from PySide2.QtWidgets import (QAction, QMenu, QTabBar, QTabWidget)
 from PySide2.QtWebEngineWidgets import (QWebEngineDownloadItem,
     QWebEngineHistory, QWebEnginePage, QWebEngineProfile)
@@ -54,12 +54,19 @@ from PySide2.QtWebEngineWidgets import (QWebEngineDownloadItem,
 class BrowserTabWidget(QTabWidget):
     """Enables having several tabs with QWebEngineView."""
 
-    url_changed = QtCore.Signal(QUrl)
-    enabled_changed = QtCore.Signal(QWebEnginePage.WebAction, bool)
-    download_requested = QtCore.Signal(QWebEngineDownloadItem)
+    #url_changed = QtCore.Signal(QUrl)
+    url_changed = Signal(QUrl)
+    #enabled_changed = QtCore.Signal(QWebEnginePage.WebAction, bool)
+    enabled_changed = Signal(QWebEnginePage.WebAction, bool)
+    #download_requested = QtCore.Signal(QWebEngineDownloadItem)
+    download_requested = Signal(QWebEngineDownloadItem)
 
     def __init__(self, window_factory_function):
         super(BrowserTabWidget, self).__init__()
+
+        #self.page = None #hole
+        self.downloadRequested = None #hole
+
         self.setTabsClosable(True)
         self._window_factory_function = window_factory_function
         self._webengineviews = []
@@ -82,10 +89,21 @@ class BrowserTabWidget(QTabWidget):
         self._webengineviews.append(web_engine_view)
         title = 'Tab {}'.format(index + 1)
         self.addTab(web_engine_view, title)
-        page = web_engine_view.page()
-        page.titleChanged.connect(self._title_changed)
-        page.iconChanged.connect(self._icon_changed)
-        page.profile().downloadRequested.connect(self._download_requested)
+        
+        self.page = web_engine_view.page()  # hole
+        #self.page = web_engine_view.QWebEngineProfile()  # hole
+        self.page.titleChanged.connect(self._title_changed)
+        self.page.iconChanged.connect(self._icon_changed)
+
+        #self.downloadRequested = QWebEngineProfile.downloadRequested
+        #print(QWebEngineProfile().downloadRequested)
+        #self.downloadRequested = QWebEngineProfile().downloadRequested(self._download_requested)
+        self.downloadRequested = self.page.profile().downloadRequested
+        self.downloadRequested.connect(self._download_requested)
+        #self.page.profile().downloadRequested.connect(self._download_requested)
+        #QtWebEngineWidgets.QWebEngineProfile.downloadRequested(
+        #    download).connect(self._download_requested)
+
         web_engine_view.urlChanged.connect(self._url_changed)
         web_engine_view.enabled_changed.connect(self._enabled_changed)
         self.setCurrentIndex(index)
@@ -245,5 +263,8 @@ class BrowserTabWidget(QTabWidget):
         return -1
 
     def _download_requested(self, item):
-        self.downloadRequested.emit(item)
+        #self.downloadRequested.emit(item)
+        pass
+        #if self.downloadRequested is not None:  # hole
+        #    self.downloadRequested.emit(item)
 
