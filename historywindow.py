@@ -29,8 +29,8 @@ if os.name == 'posix':
     QCoreApplication.setAttribute(QtCore.Qt.AA_X11InitThreads, True)
 
 #from PyQt5.QtWebKitWidgets import QWebView, QWebPage
-from PyQt5.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
-#from Pyside2 import QtWebEngineWidgets
+from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
+#from PySide2 import QtWebEngineWidgets
 #from PyQt5.QtWebEngineWidgets import QWebView, QWebPage
 #from PyQt5.QtWebKit import QWebSettings
 #from PyQt5.QtWebEngineWidgets import QWebEnginePage
