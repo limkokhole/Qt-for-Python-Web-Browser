@@ -9,3 +9,7 @@ The first Web Browser example code in the official tutorial at https://doc-snaps
  
 #### Usage
     python3 main.py
+
+#### Screenshot:
+
+![Pyside2 Web Browser](/screenshot.png?raw=true "Pyside2 Web Browser")  
