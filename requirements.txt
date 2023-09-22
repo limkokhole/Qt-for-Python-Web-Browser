@@ -1,0 +1,4 @@
+epc
+python3-xlib
+PySide2
+

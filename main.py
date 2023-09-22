@@ -49,7 +49,8 @@ from webengineview import QWebEnginePage, WebEngineView
 from PySide2 import QtCore
 from PySide2.QtCore import Qt, QUrl
 from PySide2.QtGui import QCloseEvent, QKeySequence, QIcon
-from PySide2.QtWidgets import (qApp, QAction, QApplication, QDesktopWidget,
+# hole: qApp err #from PySide2.QtWidgets import (qApp, QAction, QApplication, QDesktopWidget,
+from PySide2.QtWidgets import (QAction, QApplication, QDesktopWidget,
     QDockWidget, QLabel, QLineEdit, QMainWindow, QMenu, QMenuBar, QPushButton,
     QStatusBar, QToolBar)
 from PySide2.QtWebEngineWidgets import (QWebEngineDownloadItem, QWebEnginePage,
@@ -132,7 +133,8 @@ class MainWindow(QMainWindow):
     def _create_menu(self):
         file_menu = self.menuBar().addMenu("&File")
         exit_action = QAction(QIcon.fromTheme("application-exit"), "E&xit",
-                             self, shortcut = "Ctrl+Q", triggered=qApp.quit)
+                             # hole: qApp err: self, shortcut = "Ctrl+Q", triggered=qApp.quit)
+                             self, shortcut = "Ctrl+Q", triggered=QApplication.instance().quit)
         file_menu.addAction(exit_action)
 
         navigation_menu = self.menuBar().addMenu("&Navigation")
@@ -277,7 +279,8 @@ class MainWindow(QMainWindow):
         about_menu = self.menuBar().addMenu("&About")
         about_action = QAction("About Qt", self,
                               shortcut = QKeySequence(QKeySequence.HelpContents),
-                              triggered=qApp.aboutQt)
+                              # hole : qApp err: triggered=qApp.aboutQt)
+                              triggered=QApplication.instance().aboutQt)
         about_menu.addAction(about_action)
 
     def add_browser_tab(self):
