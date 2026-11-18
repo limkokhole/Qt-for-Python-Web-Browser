@@ -1,0 +1,953 @@
+diff -ruN orig/.gitignore new/.gitignore
+--- orig/.gitignore	2026-11-17 21:52:00.000000000 +0800
++++ new/.gitignore	2026-11-18 07:48:25.346550777 +0800
+@@ -1 +1,2 @@
+ __pycache__/
++.venv*/
+diff -ruN orig/README.md new/README.md
+--- orig/README.md	2026-11-17 21:52:00.000000000 +0800
++++ new/README.md	2026-11-18 07:27:10.981349875 +0800
+@@ -6,6 +6,9 @@
+ 
+ #### Requirement:
+     python3 -m pip install -r requirements.txt
++
++Uses PySide6 6.12 (Qt WebEngine 6.140, Chromium 140).
++Qt 6.5+ needs `libxcb-cursor0` on X11 (`sudo apt install libxcb-cursor0`).
+  
+ #### Usage
+     python3 main.py
+diff -ruN orig/bookmarkwidget.py new/bookmarkwidget.py
+--- orig/bookmarkwidget.py	2026-11-17 21:52:00.000000000 +0800
++++ new/bookmarkwidget.py	2026-11-18 06:47:58.889499808 +0800
+@@ -40,14 +40,14 @@
+ 
+ import json, os, warnings
+ 
+-from PySide2 import QtCore
+-from PySide2.QtCore import (QDir, QFileInfo, QModelIndex, QStandardPaths, Qt,
++from PySide6 import QtCore
++from PySide6.QtCore import (QDir, QFileInfo, QModelIndex, QStandardPaths, Qt,
+     QUrl)
+-from PySide2.QtGui import QIcon, QPixmap, QStandardItem, QStandardItemModel
+-from PySide2.QtWidgets import (QAction, QDockWidget, QMenu, QMessageBox,
++from PySide6.QtGui import QAction, QIcon, QPixmap, QStandardItem, QStandardItemModel
++from PySide6.QtWidgets import (QDockWidget, QMenu, QMessageBox,
+     QToolBar, QTreeView, QWidget)
+ 
+-_url_role = Qt.UserRole + 1
++_url_role = Qt.ItemDataRole.UserRole + 1
+ 
+ # Default bookmarks as an array of arrays which is the form
+ # used to read from/write to a .json bookmarks file
+@@ -64,18 +64,18 @@
+ 
+ def _config_dir():
+     return '{}/QtForPythonBrowser'.format(
+-        QStandardPaths.writableLocation(QStandardPaths.ConfigLocation))
++        QStandardPaths.writableLocation(QStandardPaths.StandardLocation.ConfigLocation))
+ 
+ _bookmark_file = 'bookmarks.json'
+ 
+ def _create_folder_item(title):
+     result = QStandardItem(title)
+-    result.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
++    result.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+     return result
+ 
+ def _create_item(url, title, icon):
+     result = QStandardItem(title)
+-    result.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
++    result.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
+     result.setData(url, _url_role)
+     if icon is not None:
+         result.setIcon(icon)
+@@ -213,24 +213,24 @@
+                 return item
+         return None
+ 
+-    def context_menu_event(self, event):
++    def contextMenuEvent(self, event):
+         context_menu = QMenu()
+         open_in_new_tab_action = context_menu.addAction("Open in New Tab")
+         remove_action = context_menu.addAction("Remove...")
+         current_item = self._current_item()
+         open_in_new_tab_action.setEnabled(current_item is not None)
+         remove_action.setEnabled(current_item is not None)
+-        chosen_action = context_menu.exec_(event.globalPos())
++        chosen_action = context_menu.exec(event.globalPos())
+         if chosen_action == open_in_new_tab_action:
+-            self.open_bookmarkInNewTab.emit(current_item.data(_url_role))
++            self.open_bookmark_in_new_tab.emit(current_item.data(_url_role))
+         elif chosen_action == remove_action:
+             self._remove_item(current_item)
+ 
+     def _remove_item(self, item):
+         button = QMessageBox.question(self, "Remove",
+             "Would you like to remove \"{}\"?".format(item.text()),
+-            QMessageBox.Yes | QMessageBox.No)
+-        if button == QMessageBox.Yes:
++            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
++        if button == QMessageBox.StandardButton.Yes:
+             item.parent().removeRow(item.row())
+ 
+     def write_bookmarks(self):
+diff -ruN orig/browsertabwidget.py new/browsertabwidget.py
+--- orig/browsertabwidget.py	2026-11-17 22:06:30.000000000 +0800
++++ new/browsertabwidget.py	2026-11-18 07:54:59.299681087 +0800
+@@ -43,13 +43,21 @@
+ 
+ from bookmarkwidget import BookmarkWidget
+ from webengineview import WebEngineView
+-from historywindow import BrowserView #HistoryWindow
+-from PySide2 import QtCore
+-from PySide2.QtCore import QPoint, Qt, QUrl, Signal
+-from PySide2.QtWidgets import (QAction, QMenu, QTabBar, QTabWidget)
+-from PySide2.QtWebEngineWidgets import (QWebEngineDownloadItem,
++from historywindow import HistoryWindow
++from webengineview import browser_profile
++from PySide6 import QtCore
++from PySide6.QtCore import QPoint, Qt, QUrl, Signal
++from PySide6.QtGui import QAction
++from PySide6.QtWidgets import (QMenu, QTabBar, QTabWidget)
++from PySide6.QtWebEngineCore import (QWebEngineDownloadRequest,
+     QWebEngineHistory, QWebEnginePage, QWebEngineProfile)
+ 
++def _log_load_failure(info):
++    if info.status() == info.LoadStatus.LoadFailedStatus:
++        print('[WebEngine] loadFailed url={} domain={} code={} error={}'.format(
++            info.url().toString(), info.errorDomain().name, info.errorCode(),
++            info.errorString()), flush=True)
++
+ #[docs]
+ class BrowserTabWidget(QTabWidget):
+     """Enables having several tabs with QWebEngineView."""
+@@ -59,7 +67,7 @@
+     #enabled_changed = QtCore.Signal(QWebEnginePage.WebAction, bool)
+     enabled_changed = Signal(QWebEnginePage.WebAction, bool)
+     #download_requested = QtCore.Signal(QWebEngineDownloadItem)
+-    download_requested = Signal(QWebEngineDownloadItem)
++    download_requested = Signal(QWebEngineDownloadRequest)
+ 
+     def __init__(self, window_factory_function):
+         super(BrowserTabWidget, self).__init__()
+@@ -78,9 +86,11 @@
+             self._actions_enabled[web_action] = False
+ 
+         tab_bar = self.tabBar()
+-        tab_bar.setSelectionBehaviorOnRemove(QTabBar.SelectPreviousTab)
+-        tab_bar.setContextMenuPolicy(Qt.CustomContextMenu)
++        tab_bar.setSelectionBehaviorOnRemove(QTabBar.SelectionBehavior.SelectPreviousTab)
++        tab_bar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+         tab_bar.customContextMenuRequested.connect(self._handle_tab_context_menu)
++        # All tabs share one profile: connect its download signal once.
++        browser_profile().downloadRequested.connect(self._download_requested)
+ 
+     def add_browser_tab(self):
+         factory_func = partial(BrowserTabWidget.add_browser_tab, self)
+@@ -90,10 +100,11 @@
+             lambda: print('[WebEngine] loadStarted', flush=True))
+         web_engine_view.loadFinished.connect(
+             lambda ok: print('[WebEngine] loadFinished ok={}'.format(ok), flush=True))
++        web_engine_view.page().loadingChanged.connect(_log_load_failure)
+         web_engine_view.renderProcessTerminated.connect(
+             lambda status, code: print(
+                 '[WebEngine] renderProcessTerminated status={} exitCode={}'.format(
+-                    status, code), flush=True))
++                    status.name, code), flush=True))
+         index = self.count()
+         self._webengineviews.append(web_engine_view)
+         title = 'Tab {}'.format(index + 1)
+@@ -107,8 +118,6 @@
+         #self.downloadRequested = QWebEngineProfile.downloadRequested
+         #print(QWebEngineProfile().downloadRequested)
+         #self.downloadRequested = QWebEngineProfile().downloadRequested(self._download_requested)
+-        self.downloadRequested = self.page.profile().downloadRequested
+-        self.downloadRequested.connect(self._download_requested)
+         #self.page.profile().downloadRequested.connect(self._download_requested)
+         #QtWebEngineWidgets.QWebEngineProfile.downloadRequested(
+         #    download).connect(self._download_requested)
+@@ -121,7 +130,7 @@
+     def load(self, url):
+         index = self.currentIndex()
+         if index >= 0 and url.isValid():
+-            print('[WebEngine] setUrl host={}'.format(url.host()), flush=True)
++            print('[WebEngine] setUrl url={}'.format(url.toString()), flush=True)
+             self._webengineviews[index].setUrl(url)
+ 
+     #[docs]
+@@ -172,31 +181,31 @@
+                 self._check_emit_enabled_changed(web_action, enabled)
+ 
+     def back(self):
+-        self._trigger_action(QWebEnginePage.Back)
++        self._trigger_action(QWebEnginePage.WebAction.Back)
+ 
+     def forward(self):
+-        self._trigger_action(QWebEnginePage.Forward)
++        self._trigger_action(QWebEnginePage.WebAction.Forward)
+ 
+     def reload(self):
+-        self._trigger_action(QWebEnginePage.Reload)
++        self._trigger_action(QWebEnginePage.WebAction.Reload)
+ 
+     def undo(self):
+-        self._trigger_action(QWebEnginePage.Undo)
++        self._trigger_action(QWebEnginePage.WebAction.Undo)
+ 
+     def redo(self):
+-        self._trigger_action(QWebEnginePage.Redo)
++        self._trigger_action(QWebEnginePage.WebAction.Redo)
+ 
+     def cut(self):
+-        self._trigger_action(QWebEnginePage.Cut)
++        self._trigger_action(QWebEnginePage.WebAction.Cut)
+ 
+     def copy(self):
+-        self._trigger_action(QWebEnginePage.Copy)
++        self._trigger_action(QWebEnginePage.WebAction.Copy)
+ 
+     def paste(self):
+-        self._trigger_action(QWebEnginePage.Paste)
++        self._trigger_action(QWebEnginePage.WebAction.Paste)
+ 
+     def select_all(self):
+-        self._trigger_action(QWebEnginePage.SelectAll)
++        self._trigger_action(QWebEnginePage.WebAction.SelectAll)
+ 
+     def show_history(self):
+         index = self.currentIndex()
+@@ -205,11 +214,11 @@
+             history_window = self._history_windows.get(webengineview)
+             if not history_window:
+                 history = webengineview.page().history()
+-                history_window = BrowserView(history, self)
++                history_window = HistoryWindow(history, self)
+                 #history_window = HistoryWindow(history, self)
+                 history_window.open_url.connect(self.load)
+                 history_window.setWindowFlags(history_window.windowFlags()
+-                                              | Qt.Window)
++                                              | Qt.WindowType.Window)
+                 history_window.setWindowTitle('History')
+                 self._history_windows[webengineview] = history_window
+             else:
+@@ -236,7 +245,7 @@
+         close_tabs_to_the_right_action = context_menu.addAction("Close Tabs to the Right")
+         close_tabs_to_the_right_action.setEnabled(index < tab_count - 1)
+         close_tab_action = context_menu.addAction("&Close Tab")
+-        chosen_action = context_menu.exec_(self.tabBar().mapToGlobal(point))
++        chosen_action = context_menu.exec(self.tabBar().mapToGlobal(point))
+         if chosen_action == duplicate_tab_action:
+             current_url = self.url()
+             self.add_browser_tab().load(current_url)
+@@ -253,10 +262,12 @@
+     def handle_tab_close_request(self, index):
+         if (index >= 0 and self.count() > 1):
+             webengineview = self._webengineviews[index]
+-            if self._history_windows.get(webengineview):
+-                del self._history_windows[webengineview]
++            history_window = self._history_windows.pop(webengineview, None)
++            if history_window:
++                history_window.deleteLater()  # it uses the page's history
+             self._webengineviews.remove(webengineview)
+             self.removeTab(index)
++            webengineview.deleteLater()  # stop the closed tab's page/renderer
+ 
+     def close_current_tab(self):
+         self.handle_tab_close_request(self.currentIndex())
+@@ -274,7 +285,9 @@
+ 
+     def _download_requested(self, item):
+         #self.downloadRequested.emit(item)
+-        pass
++        # Only handle downloads started by this window's tabs.
++        if item.page() is None or item.page() in [v.page() for v in self._webengineviews]:
++            self.download_requested.emit(item)
+         #if self.downloadRequested is not None:  # hole
+         #    self.downloadRequested.emit(item)
+ 
+diff -ruN orig/downloadwidget.py new/downloadwidget.py
+--- orig/downloadwidget.py	2026-11-17 21:52:00.000000000 +0800
++++ new/downloadwidget.py	2026-11-18 06:47:58.889078849 +0800
+@@ -38,28 +38,29 @@
+ ##
+ #############################################################################
+ 
+-import sys
+-from PySide2 import QtCore
+-from PySide2.QtCore import QDir, QFileInfo, QStandardPaths, Qt, QUrl
+-from PySide2.QtGui import QDesktopServices
+-from PySide2.QtWidgets import (QAction, QLabel, QMenu, QProgressBar,
++import os, sys
++from PySide6 import QtCore
++from PySide6.QtCore import QDir, QFileInfo, QStandardPaths, Qt, QUrl
++from PySide6.QtGui import QAction, QDesktopServices
++from PySide6.QtWidgets import (QLabel, QMenu, QProgressBar,
+     QStyleFactory, QWidget)
+-from PySide2.QtWebEngineWidgets import QWebEngineDownloadItem
++from PySide6.QtWebEngineCore import QWebEngineDownloadRequest
+ 
+ # A QProgressBar with context menu for displaying downloads in a QStatusBar.
+ #[docs]
+ class DownloadWidget(QProgressBar):
+-    """Lets you track progress of a QWebEngineDownloadItem."""
++    """Lets you track progress of a QWebEngineDownloadRequest."""
+     finished = QtCore.Signal()
+     remove_requested = QtCore.Signal()
+ 
+     def __init__(self, download_item):
+         super(DownloadWidget, self).__init__()
+         self._download_item = download_item
+-        download_item.finished.connect(self._finished)
+-        download_item.downloadProgress.connect(self._download_progress)
+-        download_item.stateChanged.connect(self._update_tool_tip())
+-        path = download_item.path()
++        download_item.isFinishedChanged.connect(self._finished)
++        download_item.receivedBytesChanged.connect(self._download_progress)
++        download_item.totalBytesChanged.connect(self._download_progress)
++        download_item.stateChanged.connect(self._update_tool_tip)
++        path = self._path()
+         self.setMaximumWidth(300)
+         # Shorten 'PySide2-5.11.0a1-5.11.0-cp36-cp36m-linux_x86_64.whl'...
+         description = QFileInfo(path).fileName()
+@@ -67,7 +68,7 @@
+         if description_length > 30:
+             description = '{}...{}'.format(description[0:10], description[description_length - 10:])
+         self.setFormat('{} %p%'.format(description))
+-        self.setOrientation(Qt.Horizontal)
++        self.setOrientation(Qt.Orientation.Horizontal)
+         self.setMinimum(0)
+         self.setValue(0)
+         self.setMaximum(100)
+@@ -82,63 +83,73 @@
+ 
+     @staticmethod
+     def open_download_directory():
+-        path = QStandardPaths.writableLocation(QStandardPaths.DownloadLocation)
++        path = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DownloadLocation)
+         DownloadWidget.open_file(path)
+ 
+     def state(self):
+         return self._download_item.state()
+ 
++    def _path(self):
++        return os.path.join(self._download_item.downloadDirectory(),
++                            self._download_item.downloadFileName())
++
+     def _update_tool_tip(self):
+-        path = self._download_item.path()
++        path = self._path()
+         tool_tip = "{}\n{}".format(self._download_item.url().toString(),
+             QDir.toNativeSeparators(path))
+-        total_bytes = self._download_item.total_bytes()
++        total_bytes = self._download_item.totalBytes()
+         if total_bytes > 0:
+             tool_tip += "\n{}K".format(total_bytes / 1024)
+         state = self.state()
+-        if state == QWebEngineDownloadItem.DownloadRequested:
++        if state == QWebEngineDownloadRequest.DownloadState.DownloadRequested:
+             tool_tip += "\n(requested)"
+-        elif state == QWebEngineDownloadItem.DownloadInProgress:
++        elif state == QWebEngineDownloadRequest.DownloadState.DownloadInProgress:
+             tool_tip += "\n(downloading)"
+-        elif state == QWebEngineDownloadItem.DownloadCompleted:
++        elif state == QWebEngineDownloadRequest.DownloadState.DownloadCompleted:
+             tool_tip += "\n(completed)"
+-        elif state == QWebEngineDownloadItem.DownloadCancelled:
++        elif state == QWebEngineDownloadRequest.DownloadState.DownloadCancelled:
+             tool_tip += "\n(cancelled)"
+         else:
+             tool_tip += "\n(interrupted)"
+         self.setToolTip(tool_tip)
+ 
+-    def _download_progress(self, bytes_received, bytes_total):
+-        self.setValue(int(100 * bytes_received / bytes_total))
++    def _download_progress(self):
++        bytes_total = self._download_item.totalBytes()
++        if bytes_total > 0:
++            self.setValue(int(100 * self._download_item.receivedBytes() / bytes_total))
+ 
+     def _finished(self):
++        if not self._download_item.isFinished():
++            return
++        if self.state() == QWebEngineDownloadRequest.DownloadState.DownloadCompleted:
++            self.setValue(100)
+         self._update_tool_tip()
+         self.finished.emit()
+ 
+     def _launch(self):
+-        DownloadWidget.open_file(self._download_item.path())
++        DownloadWidget.open_file(self._path())
+ 
+-    def mouse_double_click_event(self, event):
+-        if self.state() == QWebEngineDownloadItem.DownloadCompleted:
++    def mouseDoubleClickEvent(self, event):
++        if self.state() == QWebEngineDownloadRequest.DownloadState.DownloadCompleted:
+             self._launch()
+ 
+-    def context_menu_event(self, event):
++    def contextMenuEvent(self, event):
+         state = self.state()
+         context_menu = QMenu()
+         launch_action = context_menu.addAction("Launch")
+-        launch_action.setEnabled(state == QWebEngineDownloadItem.DownloadCompleted)
++        launch_action.setEnabled(state == QWebEngineDownloadRequest.DownloadState.DownloadCompleted)
+         show_in_folder_action = context_menu.addAction("Show in Folder")
+-        show_in_folder_action.setEnabled(state == QWebEngineDownloadItem.DownloadCompleted)
++        show_in_folder_action.setEnabled(state == QWebEngineDownloadRequest.DownloadState.DownloadCompleted)
+         cancel_action = context_menu.addAction("Cancel")
+-        cancel_action.setEnabled(state == QWebEngineDownloadItem.DownloadInProgress)
++        cancel_action.setEnabled(state == QWebEngineDownloadRequest.DownloadState.DownloadInProgress)
+         remove_action = context_menu.addAction("Remove")
+-        remove_action.setEnabled(state != QWebEngineDownloadItem.DownloadInProgress)
++        remove_action.setEnabled(state != QWebEngineDownloadRequest.DownloadState.DownloadInProgress)
+ 
+-        chosen_action = context_menu.exec_(event.globalPos())
++        chosen_action = context_menu.exec(event.globalPos())
+         if chosen_action == launch_action:
+             self._launch()
+         elif chosen_action == show_in_folder_action:
+-            DownloadWidget.open_file(QFileInfo(self._download_item.path()).absolutePath())
++            DownloadWidget.open_file(QFileInfo(self._path()).absolutePath())
+         elif chosen_action == cancel_action:
+             self._download_item.cancel()
+         elif chosen_action == remove_action:
+diff -ruN orig/historywindow.py new/historywindow.py
+--- orig/historywindow.py	2026-11-17 21:52:00.000000000 +0800
++++ new/historywindow.py	2026-11-18 06:47:35.677920118 +0800
+@@ -22,41 +22,91 @@
+ 
+ import os
+ #from PyQt5 import QtCore
+-from PySide2 import QtCore
++from PySide6 import QtCore
+ #from PyQt5.QtNetwork import QNetworkCookieJar, QNetworkCookie
+-from PySide2.QtNetwork import QNetworkCookieJar, QNetworkCookie
++from PySide6.QtNetwork import QNetworkCookieJar, QNetworkCookie
+ #from PyQt5.QtCore import QCoreApplication, QEvent
+-from PySide2.QtCore import QCoreApplication, QEvent, Signal
++from PySide6.QtCore import QAbstractTableModel, QCoreApplication, QEvent, QModelIndex, Signal
+ #from PyQt5.QtNetwork import QNetworkProxy
+-from PySide2.QtNetwork import QNetworkProxy
+-if os.name == 'posix':
+-    QCoreApplication.setAttribute(QtCore.Qt.AA_X11InitThreads, True)
++from PySide6.QtNetwork import QNetworkProxy
++# Qt.AA_X11InitThreads was a no-op in Qt 5 and no longer exists in Qt 6.
+ 
+ #from PyQt5.QtWebKitWidgets import QWebView, QWebPage
+-from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
++from PySide6.QtWebEngineWidgets import QWebEngineView
++from PySide6.QtWebEngineCore import QWebEnginePage
+ #from PySide2 import QtWebEngineWidgets
+ #from PyQt5.QtWebEngineWidgets import QWebView, QWebPage
+ #from PyQt5.QtWebKit import QWebSettings
+ #from PyQt5.QtWebEngineWidgets import QWebEnginePage
+ #from PyQt5.QtWidgets import QApplication
+-from PySide2.QtWidgets import QApplication
++from PySide6.QtWidgets import QApplication, QTreeView
+ #from PyQt5.QtCore import QUrl, Qt
+-from PySide2.QtCore import QUrl, Qt
++from PySide6.QtCore import QUrl, Qt
+ #from PyQt5 import QtGui
+-from PySide2 import QtGui
++from PySide6 import QtGui
+ import time
+ import os
+ from epc.server import ThreadingEPCServer
+ import threading
+ #from PyQt5.QtWidgets import QWidget
+-from PySide2.QtWidgets import QWidget
++from PySide6.QtWidgets import QWidget
+ #from PyQt5.QtGui import QPainter, QImage
+-from PySide2.QtGui import QPainter, QImage
++from PySide6.QtGui import QPainter, QImage
+ import functools
+ from utils import get_parent_dir
+ from xutils import get_xlib_display, grab_focus, ActiveWindowWatcher, get_parent_window_id
+ from send_key import send_string
+ 
++# Navigation history of one tab (QWebEngineHistory) as a two-column model.
++class HistoryModel(QAbstractTableModel):
++
++    def __init__(self, history, parent=None):
++        super(HistoryModel, self).__init__(parent)
++        self._history = history
++
++    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
++        if (orientation == Qt.Orientation.Horizontal
++                and role == Qt.ItemDataRole.DisplayRole):
++            return 'Title' if section == 0 else 'Url'
++        return None
++
++    def rowCount(self, index=QModelIndex()):
++        return 0 if index.isValid() else self._history.count()
++
++    def columnCount(self, index=QModelIndex()):
++        return 0 if index.isValid() else 2
++
++    def item_at(self, model_index):
++        return self._history.itemAt(model_index.row())
++
++    def data(self, model_index, role=Qt.ItemDataRole.DisplayRole):
++        if role == Qt.ItemDataRole.DisplayRole and model_index.isValid():
++            item = self.item_at(model_index)
++            return item.title() if model_index.column() == 0 else item.url().toString()
++        return None
++
++    def refresh(self):
++        self.beginResetModel()
++        self.endResetModel()
++
++# Window listing a tab's history; activating an entry emits open_url.
++class HistoryWindow(QTreeView):
++
++    open_url = Signal(QUrl)
++
++    def __init__(self, history, parent):
++        super(HistoryWindow, self).__init__(parent)
++        self.setRootIsDecorated(False)
++        self._model = HistoryModel(history, self)
++        self.setModel(self._model)
++        self.activated.connect(self._activated)
++
++    def refresh(self):
++        self._model.refresh()
++
++    def _activated(self, index):
++        self.open_url.emit(self._model.item_at(index).url())
++
+ class postGui(QtCore.QObject):
+ 
+     #throughThread = QtCore.pyqtSignal(object, object)
+@@ -493,4 +543,4 @@
+     active_window_watcher.start()
+ 
+     signal.signal(signal.SIGINT, signal.SIG_DFL)
+-    sys.exit(app.exec_())
++    sys.exit(app.exec())
+diff -ruN orig/main.py new/main.py
+--- orig/main.py	2026-11-17 21:52:00.000000000 +0800
++++ new/main.py	2026-11-18 07:22:23.671407950 +0800
+@@ -38,7 +38,7 @@
+ ##
+ #############################################################################
+ 
+-"""PySide2 WebEngineWidgets Example"""
++"""PySide6 WebEngineWidgets Example"""
+ 
+ import sys
+ from bookmarkwidget import BookmarkWidget
+@@ -46,15 +46,16 @@
+ from downloadwidget import DownloadWidget
+ #from findtoolbar import FindToolBar
+ from webengineview import QWebEnginePage, WebEngineView
+-from PySide2 import QtCore
+-from PySide2.QtCore import Qt, QUrl
+-from PySide2.QtGui import QCloseEvent, QKeySequence, QIcon
++from PySide6 import QtCore
++from PySide6.QtCore import Qt, QUrl
++from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QIcon
+ # hole: qApp err #from PySide2.QtWidgets import (qApp, QAction, QApplication, QDesktopWidget,
+-from PySide2.QtWidgets import (QAction, QApplication, QDesktopWidget,
++from PySide6.QtWidgets import (QApplication,
+     QDockWidget, QLabel, QLineEdit, QMainWindow, QMenu, QMenuBar, QPushButton,
+     QStatusBar, QToolBar)
+-from PySide2.QtWebEngineWidgets import (QWebEngineDownloadItem, QWebEnginePage,
+-    QWebEngineView)
++from PySide6.QtWebEngineCore import (QWebEngineDownloadRequest, QWebEnginePage,
++    qWebEngineChromiumVersion, qWebEngineVersion)
++from PySide6.QtWebEngineWidgets import QWebEngineView
+ 
+ main_windows = []
+ 
+@@ -63,8 +64,8 @@
+     """Creates a MainWindow using 75% of the available screen resolution."""
+     main_win = MainWindow()
+     main_windows.append(main_win)
+-    available_geometry = app.desktop().availableGeometry(main_win)
+-    main_win.resize(available_geometry.width() * 2 / 3, available_geometry.height() * 2 / 3)
++    available_geometry = main_win.screen().availableGeometry()
++    main_win.resize(available_geometry.width() * 2 // 3, available_geometry.height() * 2 // 3)
+     main_win.show()
+     return main_win
+ 
+@@ -84,14 +85,13 @@
+     def __init__(self):
+         super(MainWindow, self).__init__()
+ 
+-        self.setWindowTitle('PySide2 tabbed browser Example')
++        self.setWindowTitle('PySide6 tabbed browser Example')
+ 
+         self._tab_widget = BrowserTabWidget(create_main_window_with_browser)
+         self._tab_widget.enabled_changed.connect(self._enabled_changed)
+         self._tab_widget.download_requested.connect(self._download_requested)
+         self.setCentralWidget(self._tab_widget)
+-        self.connect(self._tab_widget, QtCore.SIGNAL("url_changed(QUrl)"),
+-                     self.url_changed)
++        self._tab_widget.url_changed.connect(self.url_changed)
+ 
+         self._bookmark_dock = QDockWidget()
+         self._bookmark_dock.setWindowTitle('Bookmarks')
+@@ -99,7 +99,7 @@
+         self._bookmark_widget.open_bookmark.connect(self.load_url)
+         self._bookmark_widget.open_bookmark_in_new_tab.connect(self.load_url_in_new_tab)
+         self._bookmark_dock.setWidget(self._bookmark_widget)
+-        self.addDockWidget(Qt.LeftDockWidgetArea, self._bookmark_dock)
++        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._bookmark_dock)
+ 
+         self._find_tool_bar = None
+ 
+@@ -121,7 +121,7 @@
+         self._update_zoom_label()
+ 
+         self._bookmarksToolBar = QToolBar()
+-        self.addToolBar(Qt.TopToolBarArea, self._bookmarksToolBar)
++        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self._bookmarksToolBar)
+         self.insertToolBarBreak(self._bookmarksToolBar)
+         self._bookmark_widget.changed.connect(self._update_bookmarks)
+         self._update_bookmarks()
+@@ -141,27 +141,27 @@
+ 
+         style_icons = ':/qt-project.org/styles/commonstyle/images/'
+         back_action = QAction(QIcon.fromTheme("go-previous",
+-                                             QIcon(style_icons + 'left-32.png')),
++                                             QIcon(style_icons + 'arrow-left-32.png')),
+                              "Back", self,
+-                             shortcut = QKeySequence(QKeySequence.Back),
++                             shortcut = QKeySequence(QKeySequence.StandardKey.Back),
+                              triggered = self._tab_widget.back)
+-        self._actions[QWebEnginePage.Back] = back_action
++        self._actions[QWebEnginePage.WebAction.Back] = back_action
+         back_action.setEnabled(False)
+         navigation_menu.addAction(back_action)
+         forward_action = QAction(QIcon.fromTheme("go-next",
+-                                                QIcon(style_icons + 'right-32.png')),
++                                                QIcon(style_icons + 'arrow-right-32.png')),
+                                 "Forward", self,
+-                                shortcut = QKeySequence(QKeySequence.Forward),
++                                shortcut = QKeySequence(QKeySequence.StandardKey.Forward),
+                                 triggered = self._tab_widget.forward)
+         forward_action.setEnabled(False)
+-        self._actions[QWebEnginePage.Forward] = forward_action
++        self._actions[QWebEnginePage.WebAction.Forward] = forward_action
+ 
+         navigation_menu.addAction(forward_action)
+         reload_action = QAction(QIcon(style_icons + 'refresh-32.png'),
+                                "Reload", self,
+-                               shortcut = QKeySequence(QKeySequence.Refresh),
++                               shortcut = QKeySequence(QKeySequence.StandardKey.Refresh),
+                                triggered = self._tab_widget.reload)
+-        self._actions[QWebEnginePage.Reload] = reload_action
++        self._actions[QWebEnginePage.WebAction.Reload] = reload_action
+         reload_action.setEnabled(False)
+         navigation_menu.addAction(reload_action)
+ 
+@@ -194,48 +194,48 @@
+ 
+         edit_menu.addSeparator()
+         undo_action = QAction("Undo", self,
+-                             shortcut = QKeySequence(QKeySequence.Undo),
++                             shortcut = QKeySequence(QKeySequence.StandardKey.Undo),
+                              triggered = self._tab_widget.undo)
+-        self._actions[QWebEnginePage.Undo] = undo_action
++        self._actions[QWebEnginePage.WebAction.Undo] = undo_action
+         undo_action.setEnabled(False)
+         edit_menu.addAction(undo_action)
+ 
+         redo_action = QAction("Redo", self,
+-                             shortcut = QKeySequence(QKeySequence.Redo),
++                             shortcut = QKeySequence(QKeySequence.StandardKey.Redo),
+                              triggered = self._tab_widget.redo)
+-        self._actions[QWebEnginePage.Redo] = redo_action
++        self._actions[QWebEnginePage.WebAction.Redo] = redo_action
+         redo_action.setEnabled(False)
+         edit_menu.addAction(redo_action)
+ 
+         edit_menu.addSeparator()
+ 
+         cut_action = QAction("Cut", self,
+-                            shortcut = QKeySequence(QKeySequence.Cut),
++                            shortcut = QKeySequence(QKeySequence.StandardKey.Cut),
+                             triggered = self._tab_widget.cut)
+-        self._actions[QWebEnginePage.Cut] = cut_action
++        self._actions[QWebEnginePage.WebAction.Cut] = cut_action
+         cut_action.setEnabled(False)
+         edit_menu.addAction(cut_action)
+ 
+         copy_action = QAction("Copy", self,
+-                             shortcut = QKeySequence(QKeySequence.Copy),
++                             shortcut = QKeySequence(QKeySequence.StandardKey.Copy),
+                              triggered = self._tab_widget.copy)
+-        self._actions[QWebEnginePage.Copy] = copy_action
++        self._actions[QWebEnginePage.WebAction.Copy] = copy_action
+         copy_action.setEnabled(False)
+         edit_menu.addAction(copy_action)
+ 
+         paste_action = QAction("Paste", self,
+-                             shortcut = QKeySequence(QKeySequence.Paste),
++                             shortcut = QKeySequence(QKeySequence.StandardKey.Paste),
+                              triggered = self._tab_widget.paste)
+-        self._actions[QWebEnginePage.Paste] = paste_action
++        self._actions[QWebEnginePage.WebAction.Paste] = paste_action
+         paste_action.setEnabled(False)
+         edit_menu.addAction(paste_action)
+ 
+         edit_menu.addSeparator()
+ 
+         select_all_action = QAction("Select All", self,
+-                                  shortcut = QKeySequence(QKeySequence.SelectAll),
++                                  shortcut = QKeySequence(QKeySequence.StandardKey.SelectAll),
+                                   triggered = self._tab_widget.select_all)
+-        self._actions[QWebEnginePage.SelectAll] = select_all_action
++        self._actions[QWebEnginePage.WebAction.SelectAll] = select_all_action
+         select_all_action.setEnabled(False)
+         edit_menu.addAction(select_all_action)
+ 
+@@ -261,12 +261,12 @@
+ 
+         zoom_in_action = QAction(QIcon.fromTheme("zoom-in"),
+                                "Zoom In", self,
+-                               shortcut = QKeySequence(QKeySequence.ZoomIn),
++                               shortcut = QKeySequence(QKeySequence.StandardKey.ZoomIn),
+                                triggered = self._zoom_in)
+         window_menu.addAction(zoom_in_action)
+         zoom_out_action = QAction(QIcon.fromTheme("zoom-out"),
+                                 "Zoom Out", self,
+-                                shortcut = QKeySequence(QKeySequence.ZoomOut),
++                                shortcut = QKeySequence(QKeySequence.StandardKey.ZoomOut),
+                                 triggered = self._zoom_out)
+         window_menu.addAction(zoom_out_action)
+ 
+@@ -278,7 +278,7 @@
+ 
+         about_menu = self.menuBar().addMenu("&About")
+         about_action = QAction("About Qt", self,
+-                              shortcut = QKeySequence(QKeySequence.HelpContents),
++                              shortcut = QKeySequence(QKeySequence.StandardKey.HelpContents),
+                               # hole : qApp err: triggered=qApp.aboutQt)
+                               triggered=QApplication.instance().aboutQt)
+         about_menu.addAction(about_action)
+@@ -359,15 +359,15 @@
+     def _download_requested(self, item):
+         # Remove old downloads before opening a new one
+         for old_download in self.statusBar().children():
+-            if type(old_download).__name__ == 'download_widget' and \
+-                old_download.state() != QWebEngineDownloadItem.DownloadInProgress:
++            if type(old_download).__name__ == 'DownloadWidget' and \
++                old_download.state() != QWebEngineDownloadRequest.DownloadState.DownloadInProgress:
+                 self.statusBar().removeWidget(old_download)
+                 del old_download
+ 
+         item.accept()
+-        download_widget = download_widget(item)
+-        download_widget.removeRequested.connect(self._remove_download_requested,
+-                                               Qt.QueuedConnection)
++        download_widget = DownloadWidget(item)
++        download_widget.remove_requested.connect(self._remove_download_requested,
++                                               Qt.ConnectionType.QueuedConnection)
+         self.statusBar().addWidget(download_widget)
+ 
+     def _remove_download_requested(self):
+@@ -390,14 +390,25 @@
+         self._bookmark_widget.write_bookmarks()
+ 
+ 
++def _log_web_engine_setup():
++    """Print the Qt WebEngine and Chromium versions in use."""
++    print('[WebEngine] Qt WebEngine {} (Chromium {})'.format(
++        qWebEngineVersion(), qWebEngineChromiumVersion()), flush=True)
++
++
+ if __name__ == '__main__':
+     app = QApplication(sys.argv)
++    _log_web_engine_setup()
+     main_win = create_main_window()
+     initial_urls = sys.argv[1:]
+     if not initial_urls:
+         initial_urls.append('http://qt.io')
+     for url in initial_urls:
+         main_win.load_url_in_new_tab(QUrl.fromUserInput(url))
+-    exit_code = app.exec_()
++    exit_code = app.exec()
+     main_win.write_bookmarks()
++    # Qt WebEngine requires pages to be deleted before their profile, which
++    # is owned by the application object.
++    del main_win
++    main_windows.clear()
+     sys.exit(exit_code)
+diff -ruN orig/requirements.txt new/requirements.txt
+--- orig/requirements.txt	2026-11-17 21:52:00.000000000 +0800
++++ new/requirements.txt	2026-11-18 06:48:25.405949473 +0800
+@@ -1,4 +1,5 @@
+ epc
+ python3-xlib
+-PySide2
+-
++PySide6==6.12.0
++PySide6-Addons==6.12.0
++PySide6-WebEngine==6.12.0.140
+diff -ruN orig/send_key.py new/send_key.py
+--- orig/send_key.py	2026-11-17 21:52:00.000000000 +0800
++++ new/send_key.py	2026-11-18 07:44:08.575294921 +0800
+@@ -31,7 +31,7 @@
+     '\t' : "Tab",
+     '\n' : "Return",  # for some reason this needs to be cr, not lf
+     '\r' : "Return",
+-    '\e' : "Escape",
++    '\x1b' : "Escape",
+     '!' : "exclam",
+     '#' : "numbersign",
+     '%' : "percent",
+diff -ruN orig/webengineview.py new/webengineview.py
+--- orig/webengineview.py	2026-11-17 21:52:00.000000000 +0800
++++ new/webengineview.py	2026-11-18 07:06:23.162013538 +0800
+@@ -1,13 +1,107 @@
+-import sys
+-from PySide2.QtWebEngineWidgets import QWebEnginePage, QWebEngineView
+-
+-from PySide2 import QtCore
+-
+-_web_actions = [QWebEnginePage.Back, QWebEnginePage.Forward,
+-               QWebEnginePage.Reload,
+-               QWebEnginePage.Undo, QWebEnginePage.Redo,
+-               QWebEnginePage.Cut, QWebEnginePage.Copy,
+-               QWebEnginePage.Paste, QWebEnginePage.SelectAll]
++import os, shutil, sqlite3, sys
++from PySide6.QtCore import QByteArray, QDateTime, QStandardPaths, QUrl
++from PySide6.QtNetwork import QNetworkCookie
++from PySide6.QtWebEngineCore import QWebEnginePage, QWebEngineProfile
++from PySide6.QtWebEngineWidgets import QWebEngineView
++from PySide6.QtWidgets import QApplication
++
++from PySide6 import QtCore
++
++_web_actions = [QWebEnginePage.WebAction.Back, QWebEnginePage.WebAction.Forward,
++               QWebEnginePage.WebAction.Reload,
++               QWebEnginePage.WebAction.Undo, QWebEnginePage.WebAction.Redo,
++               QWebEnginePage.WebAction.Cut, QWebEnginePage.WebAction.Copy,
++               QWebEnginePage.WebAction.Paste, QWebEnginePage.WebAction.SelectAll]
++
++# Qt 6 made QWebEngineProfile.defaultProfile() off-the-record. Qt 5's default
++# profile was the persistent profile named "Default", so use that name
++# explicitly to keep the existing cookies, cache and site data in
++# <AppDataLocation>/QtWebEngine/Default and <CacheLocation>/QtWebEngine/Default.
++_profile = None
++
++def browser_profile():
++    global _profile
++    if _profile is None:
++        old_cookies = _read_qt5_cookies()
++        _profile = QWebEngineProfile('Default', QApplication.instance())
++        if old_cookies:
++            _restore_cookies(_profile, old_cookies)
++    return _profile
++
++# Chromium in Qt WebEngine 6 erases a Cookies database written by Qt 5's
++# Chromium (schema version < 13) instead of migrating it. Once, before the
++# profile opens it, keep a copy as "Cookies.qt5" and read its cookies so
++# they can be added back through the cookie store.
++_QT5_COOKIE_SCHEMA_LIMIT = 13
++
++def _read_qt5_cookies():
++    try:
++        db = os.path.join(QStandardPaths.writableLocation(
++            QStandardPaths.StandardLocation.AppDataLocation),
++            'QtWebEngine', 'Default', 'Cookies')
++        backup = db + '.qt5'
++        if not os.path.isfile(db) or os.path.exists(backup):
++            return []
++        con = sqlite3.connect('file:{}?mode=ro'.format(db), uri=True)
++        try:
++            version = int(con.execute(
++                "SELECT value FROM meta WHERE key='version'").fetchone()[0])
++        finally:
++            con.close()
++        if version >= _QT5_COOKIE_SCHEMA_LIMIT:
++            return []
++        shutil.copy2(db, backup)
++        if os.path.isfile(db + '-journal'):
++            shutil.copy2(db + '-journal', backup + '-journal')
++        con = sqlite3.connect('file:{}?mode=ro'.format(backup), uri=True)
++        con.row_factory = sqlite3.Row
++        try:
++            rows = [dict(r) for r in con.execute('SELECT * FROM cookies')]
++        finally:
++            con.close()
++        print('[WebEngine] Found {} cookies in Qt 5 profile (schema {}); '
++              'backup kept as {}'.format(len(rows), version, backup), flush=True)
++        return rows
++    except Exception as e:  # never block startup on migration
++        print('[WebEngine] WARNING: could not read Qt 5 cookies: {}'.format(
++            type(e).__name__), file=sys.stderr, flush=True)
++        return []
++
++def _restore_cookies(profile, rows):
++    now_ms = QDateTime.currentMSecsSinceEpoch()
++    restored = skipped = 0
++    for row in rows:
++        try:
++            value = row.get('value') or ''
++            host = row['host_key']
++            expires_us = int(row.get('expires_utc') or 0)  # since 1601-01-01
++            expires_ms = expires_us // 1000 - 11644473600000 if expires_us else 0
++            if not value or (expires_ms and expires_ms <= now_ms):
++                skipped += 1  # encrypted or expired
++                continue
++            secure = bool(row.get('is_secure', row.get('secure', 0)))
++            cookie = QNetworkCookie(QByteArray(row['name'].encode()),
++                                    QByteArray(value.encode()))
++            cookie.setPath(row.get('path') or '/')
++            cookie.setSecure(secure)
++            cookie.setHttpOnly(bool(row.get('is_httponly', row.get('httponly', 0))))
++            samesite = row.get('samesite', -1)
++            if samesite == 1:
++                cookie.setSameSitePolicy(QNetworkCookie.SameSite.Lax)
++            elif samesite == 2:
++                cookie.setSameSitePolicy(QNetworkCookie.SameSite.Strict)
++            if expires_ms:
++                cookie.setExpirationDate(QDateTime.fromMSecsSinceEpoch(expires_ms))
++            if host.startswith('.'):
++                cookie.setDomain(host)  # domain cookie; otherwise host-only
++            origin = QUrl('{}://{}/'.format('https' if secure else 'http',
++                                            host.lstrip('.')))
++            profile.cookieStore().setCookie(cookie, origin)
++            restored += 1
++        except Exception:
++            skipped += 1
++    print('[WebEngine] Restored {} Qt 5 cookies ({} expired/encrypted/invalid '
++          'skipped)'.format(restored, skipped), flush=True)
+ 
+ class WebEngineView(QWebEngineView):
+ 
+@@ -26,7 +120,7 @@
+         return 5
+ 
+     def __init__(self, tab_factory_func, window_factory_func):
+-        super(WebEngineView, self).__init__()
++        super(WebEngineView, self).__init__(browser_profile())
+         self._tab_factory_func = tab_factory_func
+         self._window_factory_func = window_factory_func
+         page = self.page()
+@@ -39,8 +133,8 @@
+     def is_web_action_enabled(self, web_action):
+         return self.page().action(web_action).isEnabled()
+ 
+-    def create_window(self, window_type):
+-        if window_type == QWebEnginePage.WebBrowserTab or window_type == QWebEnginePage.WebBrowserBackgroundTab:
++    def createWindow(self, window_type):
++        if window_type == QWebEnginePage.WebWindowType.WebBrowserTab or window_type == QWebEnginePage.WebWindowType.WebBrowserBackgroundTab:
+             return self._tab_factory_func()
+         return self._window_factory_func()
+ 
+diff -ruN orig/xutils.py new/xutils.py
+--- orig/xutils.py	2026-11-17 21:52:00.000000000 +0800
++++ new/xutils.py	2026-11-18 06:47:35.678188489 +0800
+@@ -20,7 +20,7 @@
+ # along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ 
+ #from PyQt5 import QtCore
+-from PySide2.QtCore import QThread, Signal
++from PySide6.QtCore import QThread, Signal
+ 
+ xlib_display = None
+ 

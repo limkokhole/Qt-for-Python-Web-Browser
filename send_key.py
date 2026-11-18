@@ -31,7 +31,7 @@ special_X_keysyms = {
     '\t' : "Tab",
     '\n' : "Return",  # for some reason this needs to be cr, not lf
     '\r' : "Return",
-    '\e' : "Escape",
+    '\x1b' : "Escape",
     '!' : "exclam",
     '#' : "numbersign",
     '%' : "percent",

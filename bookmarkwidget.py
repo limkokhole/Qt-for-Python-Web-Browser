@@ -40,14 +40,14 @@
 
 import json, os, warnings
 
-from PySide2 import QtCore
-from PySide2.QtCore import (QDir, QFileInfo, QModelIndex, QStandardPaths, Qt,
+from PySide6 import QtCore
+from PySide6.QtCore import (QDir, QFileInfo, QModelIndex, QStandardPaths, Qt,
     QUrl)
-from PySide2.QtGui import QIcon, QPixmap, QStandardItem, QStandardItemModel
-from PySide2.QtWidgets import (QAction, QDockWidget, QMenu, QMessageBox,
+from PySide6.QtGui import QAction, QIcon, QPixmap, QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import (QDockWidget, QMenu, QMessageBox,
     QToolBar, QTreeView, QWidget)
 
-_url_role = Qt.UserRole + 1
+_url_role = Qt.ItemDataRole.UserRole + 1
 
 # Default bookmarks as an array of arrays which is the form
 # used to read from/write to a .json bookmarks file
@@ -64,18 +64,18 @@ _default_bookmarks = [
 
 def _config_dir():
     return '{}/QtForPythonBrowser'.format(
-        QStandardPaths.writableLocation(QStandardPaths.ConfigLocation))
+        QStandardPaths.writableLocation(QStandardPaths.StandardLocation.ConfigLocation))
 
 _bookmark_file = 'bookmarks.json'
 
 def _create_folder_item(title):
     result = QStandardItem(title)
-    result.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+    result.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
     return result
 
 def _create_item(url, title, icon):
     result = QStandardItem(title)
-    result.setFlags(Qt.ItemIsEnabled | Qt.ItemIsSelectable)
+    result.setFlags(Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable)
     result.setData(url, _url_role)
     if icon is not None:
         result.setIcon(icon)
@@ -213,24 +213,24 @@ class BookmarkWidget(QTreeView):
                 return item
         return None
 
-    def context_menu_event(self, event):
+    def contextMenuEvent(self, event):
         context_menu = QMenu()
         open_in_new_tab_action = context_menu.addAction("Open in New Tab")
         remove_action = context_menu.addAction("Remove...")
         current_item = self._current_item()
         open_in_new_tab_action.setEnabled(current_item is not None)
         remove_action.setEnabled(current_item is not None)
-        chosen_action = context_menu.exec_(event.globalPos())
+        chosen_action = context_menu.exec(event.globalPos())
         if chosen_action == open_in_new_tab_action:
-            self.open_bookmarkInNewTab.emit(current_item.data(_url_role))
+            self.open_bookmark_in_new_tab.emit(current_item.data(_url_role))
         elif chosen_action == remove_action:
             self._remove_item(current_item)
 
     def _remove_item(self, item):
         button = QMessageBox.question(self, "Remove",
             "Would you like to remove \"{}\"?".format(item.text()),
-            QMessageBox.Yes | QMessageBox.No)
-        if button == QMessageBox.Yes:
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if button == QMessageBox.StandardButton.Yes:
             item.parent().removeRow(item.row())
 
     def write_bookmarks(self):

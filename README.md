@@ -6,6 +6,9 @@ The first Web Browser example code in the official tutorial at https://doc-snaps
 
 #### Requirement:
     python3 -m pip install -r requirements.txt
+
+Uses PySide6 6.12 (Qt WebEngine 6.140, Chromium 140).
+Qt 6.5+ needs `libxcb-cursor0` on X11 (`sudo apt install libxcb-cursor0`).
  
 #### Usage
     python3 main.py

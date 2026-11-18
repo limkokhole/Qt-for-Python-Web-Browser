@@ -43,12 +43,20 @@ import sys
 
 from bookmarkwidget import BookmarkWidget
 from webengineview import WebEngineView
-from historywindow import BrowserView #HistoryWindow
-from PySide2 import QtCore
-from PySide2.QtCore import QPoint, Qt, QUrl, Signal
-from PySide2.QtWidgets import (QAction, QMenu, QTabBar, QTabWidget)
-from PySide2.QtWebEngineWidgets import (QWebEngineDownloadItem,
+from historywindow import HistoryWindow
+from webengineview import browser_profile
+from PySide6 import QtCore
+from PySide6.QtCore import QPoint, Qt, QUrl, Signal
+from PySide6.QtGui import QAction
+from PySide6.QtWidgets import (QMenu, QTabBar, QTabWidget)
+from PySide6.QtWebEngineCore import (QWebEngineDownloadRequest,
     QWebEngineHistory, QWebEnginePage, QWebEngineProfile)
+
+def _log_load_failure(info):
+    if info.status() == info.LoadStatus.LoadFailedStatus:
+        print('[WebEngine] loadFailed url={} domain={} code={} error={}'.format(
+            info.url().toString(), info.errorDomain().name, info.errorCode(),
+            info.errorString()), flush=True)
 
 #[docs]
 class BrowserTabWidget(QTabWidget):
@@ -59,7 +67,7 @@ class BrowserTabWidget(QTabWidget):
     #enabled_changed = QtCore.Signal(QWebEnginePage.WebAction, bool)
     enabled_changed = Signal(QWebEnginePage.WebAction, bool)
     #download_requested = QtCore.Signal(QWebEngineDownloadItem)
-    download_requested = Signal(QWebEngineDownloadItem)
+    download_requested = Signal(QWebEngineDownloadRequest)
 
     def __init__(self, window_factory_function):
         super(BrowserTabWidget, self).__init__()
@@ -78,13 +86,25 @@ class BrowserTabWidget(QTabWidget):
             self._actions_enabled[web_action] = False
 
         tab_bar = self.tabBar()
-        tab_bar.setSelectionBehaviorOnRemove(QTabBar.SelectPreviousTab)
-        tab_bar.setContextMenuPolicy(Qt.CustomContextMenu)
+        tab_bar.setSelectionBehaviorOnRemove(QTabBar.SelectionBehavior.SelectPreviousTab)
+        tab_bar.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         tab_bar.customContextMenuRequested.connect(self._handle_tab_context_menu)
+        # All tabs share one profile: connect its download signal once.
+        browser_profile().downloadRequested.connect(self._download_requested)
 
     def add_browser_tab(self):
         factory_func = partial(BrowserTabWidget.add_browser_tab, self)
         web_engine_view = WebEngineView(factory_func, self._window_factory_function)
+        # Diagnose navigation/rendering without logging query strings or credentials.
+        web_engine_view.loadStarted.connect(
+            lambda: print('[WebEngine] loadStarted', flush=True))
+        web_engine_view.loadFinished.connect(
+            lambda ok: print('[WebEngine] loadFinished ok={}'.format(ok), flush=True))
+        web_engine_view.page().loadingChanged.connect(_log_load_failure)
+        web_engine_view.renderProcessTerminated.connect(
+            lambda status, code: print(
+                '[WebEngine] renderProcessTerminated status={} exitCode={}'.format(
+                    status.name, code), flush=True))
         index = self.count()
         self._webengineviews.append(web_engine_view)
         title = 'Tab {}'.format(index + 1)
@@ -98,8 +118,6 @@ class BrowserTabWidget(QTabWidget):
         #self.downloadRequested = QWebEngineProfile.downloadRequested
         #print(QWebEngineProfile().downloadRequested)
         #self.downloadRequested = QWebEngineProfile().downloadRequested(self._download_requested)
-        self.downloadRequested = self.page.profile().downloadRequested
-        self.downloadRequested.connect(self._download_requested)
         #self.page.profile().downloadRequested.connect(self._download_requested)
         #QtWebEngineWidgets.QWebEngineProfile.downloadRequested(
         #    download).connect(self._download_requested)
@@ -112,6 +130,7 @@ class BrowserTabWidget(QTabWidget):
     def load(self, url):
         index = self.currentIndex()
         if index >= 0 and url.isValid():
+            print('[WebEngine] setUrl url={}'.format(url.toString()), flush=True)
             self._webengineviews[index].setUrl(url)
 
     #[docs]
@@ -162,31 +181,31 @@ class BrowserTabWidget(QTabWidget):
                 self._check_emit_enabled_changed(web_action, enabled)
 
     def back(self):
-        self._trigger_action(QWebEnginePage.Back)
+        self._trigger_action(QWebEnginePage.WebAction.Back)
 
     def forward(self):
-        self._trigger_action(QWebEnginePage.Forward)
+        self._trigger_action(QWebEnginePage.WebAction.Forward)
 
     def reload(self):
-        self._trigger_action(QWebEnginePage.Reload)
+        self._trigger_action(QWebEnginePage.WebAction.Reload)
 
     def undo(self):
-        self._trigger_action(QWebEnginePage.Undo)
+        self._trigger_action(QWebEnginePage.WebAction.Undo)
 
     def redo(self):
-        self._trigger_action(QWebEnginePage.Redo)
+        self._trigger_action(QWebEnginePage.WebAction.Redo)
 
     def cut(self):
-        self._trigger_action(QWebEnginePage.Cut)
+        self._trigger_action(QWebEnginePage.WebAction.Cut)
 
     def copy(self):
-        self._trigger_action(QWebEnginePage.Copy)
+        self._trigger_action(QWebEnginePage.WebAction.Copy)
 
     def paste(self):
-        self._trigger_action(QWebEnginePage.Paste)
+        self._trigger_action(QWebEnginePage.WebAction.Paste)
 
     def select_all(self):
-        self._trigger_action(QWebEnginePage.SelectAll)
+        self._trigger_action(QWebEnginePage.WebAction.SelectAll)
 
     def show_history(self):
         index = self.currentIndex()
@@ -195,11 +214,11 @@ class BrowserTabWidget(QTabWidget):
             history_window = self._history_windows.get(webengineview)
             if not history_window:
                 history = webengineview.page().history()
-                history_window = BrowserView(history, self)
+                history_window = HistoryWindow(history, self)
                 #history_window = HistoryWindow(history, self)
                 history_window.open_url.connect(self.load)
                 history_window.setWindowFlags(history_window.windowFlags()
-                                              | Qt.Window)
+                                              | Qt.WindowType.Window)
                 history_window.setWindowTitle('History')
                 self._history_windows[webengineview] = history_window
             else:
@@ -226,7 +245,7 @@ class BrowserTabWidget(QTabWidget):
         close_tabs_to_the_right_action = context_menu.addAction("Close Tabs to the Right")
         close_tabs_to_the_right_action.setEnabled(index < tab_count - 1)
         close_tab_action = context_menu.addAction("&Close Tab")
-        chosen_action = context_menu.exec_(self.tabBar().mapToGlobal(point))
+        chosen_action = context_menu.exec(self.tabBar().mapToGlobal(point))
         if chosen_action == duplicate_tab_action:
             current_url = self.url()
             self.add_browser_tab().load(current_url)
@@ -243,10 +262,12 @@ class BrowserTabWidget(QTabWidget):
     def handle_tab_close_request(self, index):
         if (index >= 0 and self.count() > 1):
             webengineview = self._webengineviews[index]
-            if self._history_windows.get(webengineview):
-                del self._history_windows[webengineview]
+            history_window = self._history_windows.pop(webengineview, None)
+            if history_window:
+                history_window.deleteLater()  # it uses the page's history
             self._webengineviews.remove(webengineview)
             self.removeTab(index)
+            webengineview.deleteLater()  # stop the closed tab's page/renderer
 
     def close_current_tab(self):
         self.handle_tab_close_request(self.currentIndex())
@@ -264,7 +285,9 @@ class BrowserTabWidget(QTabWidget):
 
     def _download_requested(self, item):
         #self.downloadRequested.emit(item)
-        pass
+        # Only handle downloads started by this window's tabs.
+        if item.page() is None or item.page() in [v.page() for v in self._webengineviews]:
+            self.download_requested.emit(item)
         #if self.downloadRequested is not None:  # hole
         #    self.downloadRequested.emit(item)
 

@@ -38,7 +38,7 @@
 ##
 #############################################################################
 
-"""PySide2 WebEngineWidgets Example"""
+"""PySide6 WebEngineWidgets Example"""
 
 import sys
 from bookmarkwidget import BookmarkWidget
@@ -46,15 +46,16 @@ from browsertabwidget import BrowserTabWidget
 from downloadwidget import DownloadWidget
 #from findtoolbar import FindToolBar
 from webengineview import QWebEnginePage, WebEngineView
-from PySide2 import QtCore
-from PySide2.QtCore import Qt, QUrl
-from PySide2.QtGui import QCloseEvent, QKeySequence, QIcon
+from PySide6 import QtCore
+from PySide6.QtCore import Qt, QUrl
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QIcon
 # hole: qApp err #from PySide2.QtWidgets import (qApp, QAction, QApplication, QDesktopWidget,
-from PySide2.QtWidgets import (QAction, QApplication, QDesktopWidget,
+from PySide6.QtWidgets import (QApplication,
     QDockWidget, QLabel, QLineEdit, QMainWindow, QMenu, QMenuBar, QPushButton,
     QStatusBar, QToolBar)
-from PySide2.QtWebEngineWidgets import (QWebEngineDownloadItem, QWebEnginePage,
-    QWebEngineView)
+from PySide6.QtWebEngineCore import (QWebEngineDownloadRequest, QWebEnginePage,
+    qWebEngineChromiumVersion, qWebEngineVersion)
+from PySide6.QtWebEngineWidgets import QWebEngineView
 
 main_windows = []
 
@@ -63,8 +64,8 @@ def create_main_window():
     """Creates a MainWindow using 75% of the available screen resolution."""
     main_win = MainWindow()
     main_windows.append(main_win)
-    available_geometry = app.desktop().availableGeometry(main_win)
-    main_win.resize(available_geometry.width() * 2 / 3, available_geometry.height() * 2 / 3)
+    available_geometry = main_win.screen().availableGeometry()
+    main_win.resize(available_geometry.width() * 2 // 3, available_geometry.height() * 2 // 3)
     main_win.show()
     return main_win
 
@@ -84,14 +85,13 @@ class MainWindow(QMainWindow):
     def __init__(self):
         super(MainWindow, self).__init__()
 
-        self.setWindowTitle('PySide2 tabbed browser Example')
+        self.setWindowTitle('PySide6 tabbed browser Example')
 
         self._tab_widget = BrowserTabWidget(create_main_window_with_browser)
         self._tab_widget.enabled_changed.connect(self._enabled_changed)
         self._tab_widget.download_requested.connect(self._download_requested)
         self.setCentralWidget(self._tab_widget)
-        self.connect(self._tab_widget, QtCore.SIGNAL("url_changed(QUrl)"),
-                     self.url_changed)
+        self._tab_widget.url_changed.connect(self.url_changed)
 
         self._bookmark_dock = QDockWidget()
         self._bookmark_dock.setWindowTitle('Bookmarks')
@@ -99,7 +99,7 @@ class MainWindow(QMainWindow):
         self._bookmark_widget.open_bookmark.connect(self.load_url)
         self._bookmark_widget.open_bookmark_in_new_tab.connect(self.load_url_in_new_tab)
         self._bookmark_dock.setWidget(self._bookmark_widget)
-        self.addDockWidget(Qt.LeftDockWidgetArea, self._bookmark_dock)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._bookmark_dock)
 
         self._find_tool_bar = None
 
@@ -121,7 +121,7 @@ class MainWindow(QMainWindow):
         self._update_zoom_label()
 
         self._bookmarksToolBar = QToolBar()
-        self.addToolBar(Qt.TopToolBarArea, self._bookmarksToolBar)
+        self.addToolBar(Qt.ToolBarArea.TopToolBarArea, self._bookmarksToolBar)
         self.insertToolBarBreak(self._bookmarksToolBar)
         self._bookmark_widget.changed.connect(self._update_bookmarks)
         self._update_bookmarks()
@@ -141,27 +141,27 @@ class MainWindow(QMainWindow):
 
         style_icons = ':/qt-project.org/styles/commonstyle/images/'
         back_action = QAction(QIcon.fromTheme("go-previous",
-                                             QIcon(style_icons + 'left-32.png')),
+                                             QIcon(style_icons + 'arrow-left-32.png')),
                              "Back", self,
-                             shortcut = QKeySequence(QKeySequence.Back),
+                             shortcut = QKeySequence(QKeySequence.StandardKey.Back),
                              triggered = self._tab_widget.back)
-        self._actions[QWebEnginePage.Back] = back_action
+        self._actions[QWebEnginePage.WebAction.Back] = back_action
         back_action.setEnabled(False)
         navigation_menu.addAction(back_action)
         forward_action = QAction(QIcon.fromTheme("go-next",
-                                                QIcon(style_icons + 'right-32.png')),
+                                                QIcon(style_icons + 'arrow-right-32.png')),
                                 "Forward", self,
-                                shortcut = QKeySequence(QKeySequence.Forward),
+                                shortcut = QKeySequence(QKeySequence.StandardKey.Forward),
                                 triggered = self._tab_widget.forward)
         forward_action.setEnabled(False)
-        self._actions[QWebEnginePage.Forward] = forward_action
+        self._actions[QWebEnginePage.WebAction.Forward] = forward_action
 
         navigation_menu.addAction(forward_action)
         reload_action = QAction(QIcon(style_icons + 'refresh-32.png'),
                                "Reload", self,
-                               shortcut = QKeySequence(QKeySequence.Refresh),
+                               shortcut = QKeySequence(QKeySequence.StandardKey.Refresh),
                                triggered = self._tab_widget.reload)
-        self._actions[QWebEnginePage.Reload] = reload_action
+        self._actions[QWebEnginePage.WebAction.Reload] = reload_action
         reload_action.setEnabled(False)
         navigation_menu.addAction(reload_action)
 
@@ -194,48 +194,48 @@ class MainWindow(QMainWindow):
 
         edit_menu.addSeparator()
         undo_action = QAction("Undo", self,
-                             shortcut = QKeySequence(QKeySequence.Undo),
+                             shortcut = QKeySequence(QKeySequence.StandardKey.Undo),
                              triggered = self._tab_widget.undo)
-        self._actions[QWebEnginePage.Undo] = undo_action
+        self._actions[QWebEnginePage.WebAction.Undo] = undo_action
         undo_action.setEnabled(False)
         edit_menu.addAction(undo_action)
 
         redo_action = QAction("Redo", self,
-                             shortcut = QKeySequence(QKeySequence.Redo),
+                             shortcut = QKeySequence(QKeySequence.StandardKey.Redo),
                              triggered = self._tab_widget.redo)
-        self._actions[QWebEnginePage.Redo] = redo_action
+        self._actions[QWebEnginePage.WebAction.Redo] = redo_action
         redo_action.setEnabled(False)
         edit_menu.addAction(redo_action)
 
         edit_menu.addSeparator()
 
         cut_action = QAction("Cut", self,
-                            shortcut = QKeySequence(QKeySequence.Cut),
+                            shortcut = QKeySequence(QKeySequence.StandardKey.Cut),
                             triggered = self._tab_widget.cut)
-        self._actions[QWebEnginePage.Cut] = cut_action
+        self._actions[QWebEnginePage.WebAction.Cut] = cut_action
         cut_action.setEnabled(False)
         edit_menu.addAction(cut_action)
 
         copy_action = QAction("Copy", self,
-                             shortcut = QKeySequence(QKeySequence.Copy),
+                             shortcut = QKeySequence(QKeySequence.StandardKey.Copy),
                              triggered = self._tab_widget.copy)
-        self._actions[QWebEnginePage.Copy] = copy_action
+        self._actions[QWebEnginePage.WebAction.Copy] = copy_action
         copy_action.setEnabled(False)
         edit_menu.addAction(copy_action)
 
         paste_action = QAction("Paste", self,
-                             shortcut = QKeySequence(QKeySequence.Paste),
+                             shortcut = QKeySequence(QKeySequence.StandardKey.Paste),
                              triggered = self._tab_widget.paste)
-        self._actions[QWebEnginePage.Paste] = paste_action
+        self._actions[QWebEnginePage.WebAction.Paste] = paste_action
         paste_action.setEnabled(False)
         edit_menu.addAction(paste_action)
 
         edit_menu.addSeparator()
 
         select_all_action = QAction("Select All", self,
-                                  shortcut = QKeySequence(QKeySequence.SelectAll),
+                                  shortcut = QKeySequence(QKeySequence.StandardKey.SelectAll),
                                   triggered = self._tab_widget.select_all)
-        self._actions[QWebEnginePage.SelectAll] = select_all_action
+        self._actions[QWebEnginePage.WebAction.SelectAll] = select_all_action
         select_all_action.setEnabled(False)
         edit_menu.addAction(select_all_action)
 
@@ -261,12 +261,12 @@ class MainWindow(QMainWindow):
 
         zoom_in_action = QAction(QIcon.fromTheme("zoom-in"),
                                "Zoom In", self,
-                               shortcut = QKeySequence(QKeySequence.ZoomIn),
+                               shortcut = QKeySequence(QKeySequence.StandardKey.ZoomIn),
                                triggered = self._zoom_in)
         window_menu.addAction(zoom_in_action)
         zoom_out_action = QAction(QIcon.fromTheme("zoom-out"),
                                 "Zoom Out", self,
-                                shortcut = QKeySequence(QKeySequence.ZoomOut),
+                                shortcut = QKeySequence(QKeySequence.StandardKey.ZoomOut),
                                 triggered = self._zoom_out)
         window_menu.addAction(zoom_out_action)
 
@@ -278,7 +278,7 @@ class MainWindow(QMainWindow):
 
         about_menu = self.menuBar().addMenu("&About")
         about_action = QAction("About Qt", self,
-                              shortcut = QKeySequence(QKeySequence.HelpContents),
+                              shortcut = QKeySequence(QKeySequence.StandardKey.HelpContents),
                               # hole : qApp err: triggered=qApp.aboutQt)
                               triggered=QApplication.instance().aboutQt)
         about_menu.addAction(about_action)
@@ -359,15 +359,15 @@ class MainWindow(QMainWindow):
     def _download_requested(self, item):
         # Remove old downloads before opening a new one
         for old_download in self.statusBar().children():
-            if type(old_download).__name__ == 'download_widget' and \
-                old_download.state() != QWebEngineDownloadItem.DownloadInProgress:
+            if type(old_download).__name__ == 'DownloadWidget' and \
+                old_download.state() != QWebEngineDownloadRequest.DownloadState.DownloadInProgress:
                 self.statusBar().removeWidget(old_download)
                 del old_download
 
         item.accept()
-        download_widget = download_widget(item)
-        download_widget.removeRequested.connect(self._remove_download_requested,
-                                               Qt.QueuedConnection)
+        download_widget = DownloadWidget(item)
+        download_widget.remove_requested.connect(self._remove_download_requested,
+                                               Qt.ConnectionType.QueuedConnection)
         self.statusBar().addWidget(download_widget)
 
     def _remove_download_requested(self):
@@ -390,14 +390,25 @@ class MainWindow(QMainWindow):
         self._bookmark_widget.write_bookmarks()
 
 
+def _log_web_engine_setup():
+    """Print the Qt WebEngine and Chromium versions in use."""
+    print('[WebEngine] Qt WebEngine {} (Chromium {})'.format(
+        qWebEngineVersion(), qWebEngineChromiumVersion()), flush=True)
+
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
+    _log_web_engine_setup()
     main_win = create_main_window()
     initial_urls = sys.argv[1:]
     if not initial_urls:
         initial_urls.append('http://qt.io')
     for url in initial_urls:
         main_win.load_url_in_new_tab(QUrl.fromUserInput(url))
-    exit_code = app.exec_()
+    exit_code = app.exec()
     main_win.write_bookmarks()
+    # Qt WebEngine requires pages to be deleted before their profile, which
+    # is owned by the application object.
+    del main_win
+    main_windows.clear()
     sys.exit(exit_code)

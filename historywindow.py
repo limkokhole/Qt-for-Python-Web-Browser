@@ -22,40 +22,90 @@
 
 import os
 #from PyQt5 import QtCore
-from PySide2 import QtCore
+from PySide6 import QtCore
 #from PyQt5.QtNetwork import QNetworkCookieJar, QNetworkCookie
-from PySide2.QtNetwork import QNetworkCookieJar, QNetworkCookie
+from PySide6.QtNetwork import QNetworkCookieJar, QNetworkCookie
 #from PyQt5.QtCore import QCoreApplication, QEvent
-from PySide2.QtCore import QCoreApplication, QEvent, Signal
+from PySide6.QtCore import QAbstractTableModel, QCoreApplication, QEvent, QModelIndex, Signal
 #from PyQt5.QtNetwork import QNetworkProxy
-from PySide2.QtNetwork import QNetworkProxy
-if os.name == 'posix':
-    QCoreApplication.setAttribute(QtCore.Qt.AA_X11InitThreads, True)
+from PySide6.QtNetwork import QNetworkProxy
+# Qt.AA_X11InitThreads was a no-op in Qt 5 and no longer exists in Qt 6.
 
 #from PyQt5.QtWebKitWidgets import QWebView, QWebPage
-from PySide2.QtWebEngineWidgets import QWebEngineView, QWebEnginePage
+from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtWebEngineCore import QWebEnginePage
 #from PySide2 import QtWebEngineWidgets
 #from PyQt5.QtWebEngineWidgets import QWebView, QWebPage
 #from PyQt5.QtWebKit import QWebSettings
 #from PyQt5.QtWebEngineWidgets import QWebEnginePage
 #from PyQt5.QtWidgets import QApplication
-from PySide2.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QTreeView
 #from PyQt5.QtCore import QUrl, Qt
-from PySide2.QtCore import QUrl, Qt
+from PySide6.QtCore import QUrl, Qt
 #from PyQt5 import QtGui
-from PySide2 import QtGui
+from PySide6 import QtGui
 import time
 import os
 from epc.server import ThreadingEPCServer
 import threading
 #from PyQt5.QtWidgets import QWidget
-from PySide2.QtWidgets import QWidget
+from PySide6.QtWidgets import QWidget
 #from PyQt5.QtGui import QPainter, QImage
-from PySide2.QtGui import QPainter, QImage
+from PySide6.QtGui import QPainter, QImage
 import functools
 from utils import get_parent_dir
 from xutils import get_xlib_display, grab_focus, ActiveWindowWatcher, get_parent_window_id
 from send_key import send_string
+
+# Navigation history of one tab (QWebEngineHistory) as a two-column model.
+class HistoryModel(QAbstractTableModel):
+
+    def __init__(self, history, parent=None):
+        super(HistoryModel, self).__init__(parent)
+        self._history = history
+
+    def headerData(self, section, orientation, role=Qt.ItemDataRole.DisplayRole):
+        if (orientation == Qt.Orientation.Horizontal
+                and role == Qt.ItemDataRole.DisplayRole):
+            return 'Title' if section == 0 else 'Url'
+        return None
+
+    def rowCount(self, index=QModelIndex()):
+        return 0 if index.isValid() else self._history.count()
+
+    def columnCount(self, index=QModelIndex()):
+        return 0 if index.isValid() else 2
+
+    def item_at(self, model_index):
+        return self._history.itemAt(model_index.row())
+
+    def data(self, model_index, role=Qt.ItemDataRole.DisplayRole):
+        if role == Qt.ItemDataRole.DisplayRole and model_index.isValid():
+            item = self.item_at(model_index)
+            return item.title() if model_index.column() == 0 else item.url().toString()
+        return None
+
+    def refresh(self):
+        self.beginResetModel()
+        self.endResetModel()
+
+# Window listing a tab's history; activating an entry emits open_url.
+class HistoryWindow(QTreeView):
+
+    open_url = Signal(QUrl)
+
+    def __init__(self, history, parent):
+        super(HistoryWindow, self).__init__(parent)
+        self.setRootIsDecorated(False)
+        self._model = HistoryModel(history, self)
+        self.setModel(self._model)
+        self.activated.connect(self._activated)
+
+    def refresh(self):
+        self._model.refresh()
+
+    def _activated(self, index):
+        self.open_url.emit(self._model.item_at(index).url())
 
 class postGui(QtCore.QObject):
 
@@ -493,4 +543,4 @@ if __name__ == '__main__':
     active_window_watcher.start()
 
     signal.signal(signal.SIGINT, signal.SIG_DFL)
-    sys.exit(app.exec_())
+    sys.exit(app.exec())

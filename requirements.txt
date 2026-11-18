@@ -1,4 +1,5 @@
 epc
 python3-xlib
-PySide2
-
+PySide6==6.12.0
+PySide6-Addons==6.12.0
+PySide6-WebEngine==6.12.0.140
