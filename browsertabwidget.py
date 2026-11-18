@@ -268,6 +268,8 @@ class BrowserTabWidget(QTabWidget):
             self._webengineviews.remove(webengineview)
             self.removeTab(index)
             webengineview.deleteLater()  # stop the closed tab's page/renderer
+        elif index >= 0:
+            self.window().close()  # last tab: close the window, like Ctrl+W
 
     def close_current_tab(self):
         self.handle_tab_close_request(self.currentIndex())
