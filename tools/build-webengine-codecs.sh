@@ -7,7 +7,8 @@
 #                                                                         build and install (resumable)
 #   tools/build-webengine-codecs.sh --check   [--venv DIR]                 show what the engine can play
 #   tools/build-webengine-codecs.sh --restore [--venv DIR]                 put the original pip files back
-#   tools/build-webengine-codecs.sh --install-only STAGE [--venv DIR]      install an already built stage dir
+#   tools/build-webengine-codecs.sh --install-only [STAGE] [--venv DIR]    install an already built engine
+#                                     (STAGE default: ~/qtwebengine-codecs/stage, or DIR/stage with --work DIR)
 #
 # Needs Linux x86_64, ~60 GB free disk and >= 8 GB RAM. Building Chromium takes several hours
 # (roughly 3-6 h on 8 cores). Rerunning continues where it stopped.
@@ -34,8 +35,9 @@ while [ $# -gt 0 ]; do
     --skip-packages) PACKAGES=0; shift ;;
     --check) ACTION=check; shift ;;
     --restore) ACTION=restore; shift ;;
-    --install-only) ACTION=install; STAGE=$2; shift 2 ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
+    --install-only) ACTION=install
+      if [ $# -gt 1 ] && [ "${2#--}" = "$2" ]; then STAGE=$2; shift 2; else shift; fi ;;
+    -h|--help) sed -n '2,21p' "$0"; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -136,7 +138,7 @@ restore() {
 case $ACTION in
   check) check; exit $? ;;
   restore) restore; exit 0 ;;
-  install) install_stage "$(readlink -f "$STAGE")"; exit 0 ;;
+  install) install_stage "$(readlink -f "${STAGE:-$WORK/stage}")"; exit 0 ;;
 esac
 
 # ---------------------------------------------------------------- build
