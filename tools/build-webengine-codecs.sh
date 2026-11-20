@@ -13,8 +13,8 @@
 # Needs Linux x86_64, ~60 GB free disk and >= 8 GB RAM. Building Chromium takes several hours
 # (roughly 3-6 h on 8 cores). Rerunning continues where it stopped.
 # Tested on Ubuntu 24.04; not tested on Red Hat-based distributions (Fedora, RHEL).
-# Step 1 installs the build packages (compiler, cmake, ninja, nodejs and -dev libraries) with apt and
-# sudo. --skip-packages skips only that step; everything else still runs. Use it on distributions
+# Step 1 installs the missing build packages (compiler, cmake, ninja, nodejs and -dev libraries) with
+# apt and sudo, asking first; installed packages are never upgraded. --skip-packages skips only that step; everything else still runs. Use it on distributions
 # without apt after installing the equivalent packages with your own package manager (e.g. dnf),
 # or on Ubuntu when they are already installed. A missing package makes the configure or build
 # step stop with an error naming it.
@@ -168,15 +168,27 @@ fi
 echo "Parallel jobs: $JOBS (RAM ${mem_gb} GB, $(nproc) cores; override with --jobs N)"
 
 if [ "$PACKAGES" = 1 ]; then
-say "Installing build packages (sudo)"
-sudo apt-get update -qq
-sudo apt-get install -y --no-install-recommends \
-  build-essential cmake ninja-build pkg-config python3 python3-html5lib python3-venv nodejs gperf bison flex \
-  curl xz-utils libnss3-dev libdbus-1-dev libfontconfig-dev libfreetype-dev libxkbcommon-dev \
-  libxkbcommon-x11-dev libxkbfile-dev libx11-dev libx11-xcb-dev libxcomposite-dev libxdamage-dev libxext-dev \
-  libxfixes-dev libxrandr-dev libxtst-dev libxshmfence-dev libxcb1-dev libxcb-dri3-dev libdrm-dev libgbm-dev \
-  libegl-dev libgl-dev libgl1-mesa-dev libvulkan-dev libasound2-dev libpulse-dev libudev-dev libexpat1-dev \
-  zlib1g-dev libva-dev libpci-dev libkrb5-dev libcups2-dev libxml2-dev libxslt1-dev
+  # Install only what is missing, never upgrade what is installed: "apt-get install PKG" would upgrade an
+  # installed PKG (and whatever must match it, e.g. libudev-dev pulls systemd) when a newer version exists.
+  need=(build-essential cmake ninja-build pkg-config python3 python3-html5lib python3-venv nodejs gperf bison flex
+    curl xz-utils libnss3-dev libdbus-1-dev libfontconfig-dev libfreetype-dev libxkbcommon-dev
+    libxkbcommon-x11-dev libxkbfile-dev libx11-dev libx11-xcb-dev libxcomposite-dev libxdamage-dev libxext-dev
+    libxfixes-dev libxrandr-dev libxtst-dev libxshmfence-dev libxcb1-dev libxcb-dri3-dev libdrm-dev libgbm-dev
+    libegl-dev libgl-dev libgl1-mesa-dev libvulkan-dev libasound2-dev libpulse-dev libudev-dev libexpat1-dev
+    zlib1g-dev libva-dev libpci-dev libkrb5-dev libcups2-dev libxml2-dev libxslt1-dev)
+  missing=()
+  for p in "${need[@]}"; do
+    dpkg-query -W -f='${Status}' "$p" 2>/dev/null | grep -q 'install ok installed' || missing+=("$p")
+  done
+  if [ ${#missing[@]} -eq 0 ]; then
+    echo "Build packages: all installed"
+  else
+    say "Installing missing build packages (sudo): ${missing[*]}"
+    sudo apt-get update -qq
+    # --no-upgrade: leave installed packages as they are (a new package may still need a newer dependency;
+    # apt then lists it before asking)
+    sudo apt-get install --no-upgrade --no-install-recommends "${missing[@]}"
+  fi
 fi
 
 # Qt itself (headers and CMake files) in the same version as PySide6's, from the Qt Company's binaries.
@@ -220,7 +232,7 @@ if [ ! -f "$BUILD/build.ninja" ]; then
     || echo "warning: the configure summary does not show 'Proprietary Codecs ... yes'; see $BUILD/config.summary"
 fi
 
-say "Building (several hours; safe to interrupt and rerun)"
+say "Building (several hours the first time; a finished build is only checked; safe to interrupt and rerun)"
 export NINJAJOBS="-j$JOBS"         # Qt WebEngine passes this to Chromium's own ninja
 (cd "$BUILD" && cmake --build . --parallel "$JOBS")
 
